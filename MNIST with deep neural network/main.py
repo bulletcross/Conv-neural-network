@@ -1,57 +1,37 @@
 import tensorflow as tf
-
 from tensorflow.examples.tutorials.mnist import input_data
 
 mnist = input_data.read_data_sets("/tmp/data", one_hot=True)
 
-n_nodes_hl1 = 500
-n_nodes_hl2 = 500
-n_nodes_hl3 = 500
-
+n_input_size = 784
 n_classes = 10
 batch_size = 100
+#Define the structure of deep neural network
+nodes = [n_input_size, 1024, 128, 128, 512, n_classes]
 
 #28*28 = 784
 x = tf.placeholder('float',[None,784])
 y = tf.placeholder('float')
 
-
-#defining layers in dictionary for easy access
+#defining layers in dictionary for easy access, not flexible defenition
 def neural_net_model(data):
+    layer = []
+    for i in range(0,len(nodes)-1):
+        layer_var = {'weights':tf.Variable(tf.random_normal([nodes[i], nodes[i+1]])), 'biases': tf.Variable(tf.random_normal([nodes[i+1]]))}
+        layer.append(layer_var)
 
-    hidden_layer1 = {'weights':tf.Variable(tf.random_normal([784, n_nodes_hl1])),
-                    'biases':tf.Variable(tf.random_normal([n_nodes_hl1]))}
+    layer_data = data
+    for i in range(0,len(layer)-1):
+        layer_data = tf.nn.relu(tf.add(tf.matmul(layer_data,layer[i]['weights']),layer[i]['biases']))
 
-    hidden_layer2 = {'weights':tf.Variable(tf.random_normal([n_nodes_hl1,n_nodes_hl2])),
-                    'biases':tf.Variable(tf.random_normal([n_nodes_hl2]))}
-
-    hidden_layer3 = {'weights':tf.Variable(tf.random_normal([n_nodes_hl2,n_nodes_hl3])),
-                    'biases':tf.Variable(tf.random_normal([n_nodes_hl3]))}
-
-    output_layer = {'weights':tf.Variable(tf.random_normal([n_nodes_hl3,n_classes])),
-                    'biases':tf.Variable(tf.random_normal([n_classes]))}
-
-    l1 = tf.add(tf.matmul(data, hidden_layer1['weights']), hidden_layer1['biases'])
-    l1 = tf.nn.relu(l1)
-
-    l2 = tf.add(tf.matmul(l1, hidden_layer2['weights']), hidden_layer2['biases'])
-    l2 = tf.nn.relu(l2)
-
-    l3 = tf.add(tf.matmul(l2, hidden_layer3['weights']), hidden_layer3['biases'])
-    l3 = tf.nn.relu(l3)
-
-    output = tf.matmul(l3, output_layer['weights']), output_layer['biases']
-
-    return output
+    return tf.matmul(layer_data, layer[len(layer)-1]['weights']) + layer[len(layer)-1]['biases']
 
 def train_neural_net(x):
-
     prediction = neural_net_model(x)
     cost = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y) )
     optimizer = tf.train.AdamOptimizer().minimize(cost) #default lr=0.001
 
-    n_epochs = 10
-
+    n_epochs = 20
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
 
