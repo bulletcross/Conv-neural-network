@@ -47,4 +47,6 @@ def train_neural_net(x):
         accuracy = tf.reduce_mean(tf.cast(correct,'float'))
         print('Accuracy:',accuracy.eval({x:mnist.test.images, y:mnist.test.labels}))
 
-train_neural_net(x)
+#Try running on GTX1070
+with tf.device('/gpu:0'):
+	train_neural_net(x)
