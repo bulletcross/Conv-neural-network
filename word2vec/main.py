@@ -8,8 +8,10 @@ import random
 
 DATA = 'Dataset/text8'
 VOCAB = 'Dataset/vocabulary.tsv'
-VOCAB_SIZE = 50
+VOCAB_SIZE = 10000
+EMBED_SIZE = 50
 BATCH_SIZE = 128
+NR_STEPS = 1000000
 
 def data_generator_initialization():
     # compat = compatibility with python bytes and unicode
@@ -50,12 +52,56 @@ def batch_data_generator(batch_size, word_index, ctx_window):
             word_batch[index], ctx_batch[index] = next(generator_fn)
         yield word_batch, ctx_batch
 
+def model_graph(center_word, ctx_word):
+    # Embedding matrix for vector lookup
+    embed_matrix = tf.get_variable(
+        shape = [VOCAB_SIZE, EMBED_SIZE],
+        initializer = tf.random_uniform_initializer(),
+        name = 'embedding'
+    )
+    # A lookup functions, just returns the corrosponding row
+    embed_lookup = tf.nn.embedding_lookup(embed_matrix, ceter_word,
+        name = 'lookup')
+    # Reconstruction matrices
+    reconstruction_matrix = tf.get_variable(
+        shape = [VOCAB_SIZE, EMBED_SIZE],
+        initializer = tf.truncated_normal_initializer(stddev=1.0/(EMBED_SIZE**0.5)),
+        name = 'reconstruction'
+    )
+    bias = tf.get_variable(initializer = tf.zeros([VOCAB_SIZE]), name = 'bias')
+    # Losses, inbuilt
+    nce_loss = tf.nn.nce_loss(
+        weights = reconstruction_matrix,
+        biases = bias,
+        labels = ctx_word,
+        inputs = embed_lookup,
+        num_sampled = 64,
+        num_classes = VOCAB_SIZE
+    )
+    loss = tf.reduce_mean(nce_loss, name = 'loss')
+    optimizer = tf.train.AdamOptimizer(1.0).minimize(loss)
+    return embed_matrix, embed_lookup, loss, optimizer
+
 def main():
     word_index = data_generator_initialization()
-    gen = single_data_generator(word_index, 2)
-    for i in range(5):
-        w,c = next(gen)
-        print(w, c)
+    gen_fn = batch_data_generator(BATCH_SIZE, word_index, 2)
+    tf_dataset = tf.data.Dataset.from_generator(
+        gen_fn,
+        (tf.int32, tf.int32),
+        (tf.TensorShape([BATCH_SIZE]), tf.TensorShape([BATCH_SIZE, 1]))
+    )
+    iterator = tf_dataset.make_initializable_iterator()
+    center, ctx = iterator.get_next()
+    embed_matrix, embed_lookup, loss, optimizer = model_graph(center, ctx)
+    # Start training
+    with tf.Session() as sess:
+        sess.run(iterator.initializer)
+        sess.run(tf.global_varibles_initializer())
+        for nr_steps in range(NR_STEPS):
+            try:
+                loss, _ = sess.run([loss, optimizer])
+            except tf.errors.OutOfRangeError:
+                sess.run(iterator.initializer)
 
 if __name__ == "__main__":
     main()
