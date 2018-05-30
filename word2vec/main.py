@@ -52,6 +52,10 @@ def batch_data_generator(batch_size, word_index, ctx_window):
             word_batch[index], ctx_batch[index] = next(generator_fn)
         yield word_batch, ctx_batch
 
+def generator():
+    word_index = data_generator_initialization()
+    yield from batch_data_generator(BATCH_SIZE, word_index, 2)
+
 def model_graph(center_word, ctx_word):
     # Embedding matrix for vector lookup
     embed_matrix = tf.get_variable(
@@ -60,7 +64,7 @@ def model_graph(center_word, ctx_word):
         name = 'embedding'
     )
     # A lookup functions, just returns the corrosponding row
-    embed_lookup = tf.nn.embedding_lookup(embed_matrix, ceter_word,
+    embed_lookup = tf.nn.embedding_lookup(embed_matrix, center_word,
         name = 'lookup')
     # Reconstruction matrices
     reconstruction_matrix = tf.get_variable(
@@ -83,23 +87,29 @@ def model_graph(center_word, ctx_word):
     return embed_matrix, embed_lookup, loss, optimizer
 
 def main():
-    word_index = data_generator_initialization()
-    gen_fn = batch_data_generator(BATCH_SIZE, word_index, 2)
+    #word_index = data_generator_initialization()
+    #gen_fn = batch_data_generator(BATCH_SIZE, word_index, 2)
+    #gen_fn = generator()
+
     tf_dataset = tf.data.Dataset.from_generator(
-        gen_fn,
+        generator,
         (tf.int32, tf.int32),
-        (tf.TensorShape([BATCH_SIZE]), tf.TensorShape([BATCH_SIZE, 1]))
-    )
+        (tf.TensorShape([BATCH_SIZE]), tf.TensorShape([BATCH_SIZE, 1])))
     iterator = tf_dataset.make_initializable_iterator()
     center, ctx = iterator.get_next()
     embed_matrix, embed_lookup, loss, optimizer = model_graph(center, ctx)
     # Start training
     with tf.Session() as sess:
         sess.run(iterator.initializer)
-        sess.run(tf.global_varibles_initializer())
+        sess.run(tf.global_variables_initializer())
+        step_loss = 0.0
         for nr_steps in range(NR_STEPS):
             try:
-                loss, _ = sess.run([loss, optimizer])
+                loss_val, _ = sess.run([loss, optimizer])
+                step_loss += loss_val
+                if (nr_steps + 1) % 1000 == 0:
+                    print('Step ' + str(nr_steps+1) + ' loss: ' + str(step_loss))
+                    step_loss = 0.0
             except tf.errors.OutOfRangeError:
                 sess.run(iterator.initializer)
 
