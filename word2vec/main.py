@@ -98,6 +98,7 @@ def main():
     iterator = tf_dataset.make_initializable_iterator()
     center, ctx = iterator.get_next()
     embed_matrix, embed_lookup, loss, optimizer = model_graph(center, ctx)
+    writer = tf.summary.FileWriter('graphs/word2vec_simple', tf.get_default_graph())
     # Start training
     with tf.Session() as sess:
         sess.run(iterator.initializer)
@@ -112,6 +113,7 @@ def main():
                     step_loss = 0.0
             except tf.errors.OutOfRangeError:
                 sess.run(iterator.initializer)
+    writer.close()
 
 if __name__ == "__main__":
     main()
