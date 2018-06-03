@@ -11,7 +11,7 @@ VOCAB = 'Dataset/vocabulary.tsv'
 VOCAB_SIZE = 10000
 EMBED_SIZE = 50
 BATCH_SIZE = 128
-NR_STEPS = 1000000
+NR_STEPS = 10000
 
 def data_generator_initialization():
     # compat = compatibility with python bytes and unicode
@@ -58,32 +58,34 @@ def generator():
 
 def model_graph(center_word, ctx_word):
     # Embedding matrix for vector lookup
-    embed_matrix = tf.get_variable(
-        shape = [VOCAB_SIZE, EMBED_SIZE],
-        initializer = tf.random_uniform_initializer(),
-        name = 'embedding'
-    )
-    # A lookup functions, just returns the corrosponding row
-    embed_lookup = tf.nn.embedding_lookup(embed_matrix, center_word,
-        name = 'lookup')
-    # Reconstruction matrices
-    reconstruction_matrix = tf.get_variable(
-        shape = [VOCAB_SIZE, EMBED_SIZE],
-        initializer = tf.truncated_normal_initializer(stddev=1.0/(EMBED_SIZE**0.5)),
-        name = 'reconstruction'
-    )
-    bias = tf.get_variable(initializer = tf.zeros([VOCAB_SIZE]), name = 'bias')
+    with tf.name_scope('network'):
+        embed_matrix = tf.get_variable(
+            shape = [VOCAB_SIZE, EMBED_SIZE],
+            initializer = tf.random_uniform_initializer(),
+            name = 'embedding'
+        )
+        # A lookup functions, just returns the corrosponding row
+        embed_lookup = tf.nn.embedding_lookup(embed_matrix, center_word,
+            name = 'lookup')
+        # Reconstruction matrices
+        reconstruction_matrix = tf.get_variable(
+            shape = [VOCAB_SIZE, EMBED_SIZE],
+            initializer = tf.truncated_normal_initializer(stddev=1.0/(EMBED_SIZE**0.5)),
+            name = 'reconstruction'
+        )
+        bias = tf.get_variable(initializer = tf.zeros([VOCAB_SIZE]), name = 'bias')
     # Losses, inbuilt
-    nce_loss = tf.nn.nce_loss(
-        weights = reconstruction_matrix,
-        biases = bias,
-        labels = ctx_word,
-        inputs = embed_lookup,
-        num_sampled = 64,
-        num_classes = VOCAB_SIZE
-    )
-    loss = tf.reduce_mean(nce_loss, name = 'loss')
-    optimizer = tf.train.AdamOptimizer(1.0).minimize(loss)
+    with tf.name_scope('loss_optimization'):
+        nce_loss = tf.nn.nce_loss(
+            weights = reconstruction_matrix,
+            biases = bias,
+            labels = ctx_word,
+            inputs = embed_lookup,
+            num_sampled = 64,
+            num_classes = VOCAB_SIZE
+        )
+        loss = tf.reduce_mean(nce_loss, name = 'loss')
+        optimizer = tf.train.AdamOptimizer(1.0).minimize(loss)
     return embed_matrix, embed_lookup, loss, optimizer
 
 def main():
@@ -95,14 +97,21 @@ def main():
         generator,
         (tf.int32, tf.int32),
         (tf.TensorShape([BATCH_SIZE]), tf.TensorShape([BATCH_SIZE, 1])))
-    iterator = tf_dataset.make_initializable_iterator()
-    center, ctx = iterator.get_next()
+    with tf.name_scope('inputs'):
+        iterator = tf_dataset.make_initializable_iterator()
+        center, ctx = iterator.get_next()
     embed_matrix, embed_lookup, loss, optimizer = model_graph(center, ctx)
-    writer = tf.summary.FileWriter('graphs/word2vec_simple', tf.get_default_graph())
+    writer = tf.summary.FileWriter('Dataset/graphs', tf.get_default_graph())
     # Start training
     with tf.Session() as sess:
         sess.run(iterator.initializer)
         sess.run(tf.global_variables_initializer())
+        # See if training can be continued
+        saver = tf.train.Saver()
+        ckpt = tf.train.get_checkpoint_state(os.path.dirname('Dataset/checkpoint/checkpoint'))
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            print("Checkpoint restored..")
         step_loss = 0.0
         for nr_steps in range(NR_STEPS):
             try:
@@ -113,6 +122,7 @@ def main():
                     step_loss = 0.0
             except tf.errors.OutOfRangeError:
                 sess.run(iterator.initializer)
+        saver.save(sess, 'Dataset/checkpoint/model.ckpt')
     writer.close()
 
 if __name__ == "__main__":
